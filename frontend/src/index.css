@@ -1,0 +1,46 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  @apply bg-slate-50 text-slate-800 antialiased;
+}
+@layer components {
+  .card {
+    @apply bg-slate-50 p-4 rounded;
+  }
+}
+html, body {
+  overflow-x: hidden;
+
+}
+.custom-dashed-border {
+  border: 2px dashed #cbd5e1;
+  border-radius: 8px;
+  border-spacing: 6px;
+}
+@media (min-width: 1024px) and (max-width: 1439px) {
+  .kpi-container {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px; /* adjust if needed */
+  }
+}
+
+
+
+@media (min-width: 1440px) and (max-width: 2560px) {
+
+   .kpi-container {
+    display: grid !important;
+    grid-template-columns: repeat(4, 1fr) !important;
+  gap: 10px   !important; /* adjust if needed */
+  }
+ 
+
+  .kpi-card button {
+    margin-top: 30px;
+  }
+
+}

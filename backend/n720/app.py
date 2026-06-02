@@ -1,0 +1,517 @@
+from __future__ import annotations
+
+import json
+import logging
+import threading
+import os
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+import paho.mqtt.client as mqtt
+from fastapi import FastAPI
+from sqlalchemy import create_engine, text
+
+app = FastAPI(title="N720 MQTT Listener")
+
+ENV_FILE = Path(__file__).resolve().parent / ".env"
+APP_ENV_FILE = Path(__file__).resolve().parents[1] / "app" / ".env"
+
+
+def _load_dotenv(path: Path) -> None:
+    if not path.exists():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        raw = line.strip()
+        if not raw or raw.startswith("#") or "=" not in raw:
+            continue
+        key, value = raw.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+_load_dotenv(APP_ENV_FILE)
+_load_dotenv(ENV_FILE)
+
+# EMQX settings (loaded from backend/n720/.env)
+MQTT_HOST = os.getenv("N720_EMQX_HOST", "127.0.0.1")
+MQTT_PORT = int(os.getenv("N720_EMQX_PORT", "8083"))
+MQTT_TOPIC = os.getenv("N720_EMQX_TOPIC", "/demo")
+MQTT_USERNAME = os.getenv("N720_EMQX_USERNAME", "")
+MQTT_PASSWORD = os.getenv("N720_EMQX_PASSWORD", "")
+MQTT_WS_PATH = os.getenv("N720_EMQX_WS_PATH", "/mqtt")
+MQTT_KEEPALIVE = int(os.getenv("N720_EMQX_KEEPALIVE_SECONDS", "60"))
+N720_BATCH_DURATION_SECONDS = float(os.getenv("N720_BATCH_DURATION_SECONDS", "5"))
+
+# Database settings (sourced from backend/app/.env; override in backend/n720/.env if needed)
+DATABASE_URL = os.getenv("DATABASE_URL")
+DB_SCHEMA = os.getenv("DB_SCHEMA")
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL is required in backend/n720/.env")
+if not DB_SCHEMA:
+    raise RuntimeError("DB_SCHEMA is required in backend/n720/.env")
+
+DATA_FILE = Path(__file__).resolve().parent / "data" / "plc.json"
+LOG = logging.getLogger("n720")
+
+mqtt_client: mqtt.Client | None = None
+mqtt_lock = threading.Lock()
+plc_state_lock = threading.Lock()
+last_process_switch: int | None = None
+last_batch_switch: int | None = None
+active_batch_id: int | None = None
+
+db_connect_args: dict[str, str] = {}
+if DATABASE_URL.startswith("postgresql"):
+    db_connect_args["options"] = f"-csearch_path={DB_SCHEMA}"
+db_engine = create_engine(DATABASE_URL, connect_args=db_connect_args)
+
+
+def _ensure_data_file() -> None:
+    DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
+    if not DATA_FILE.exists():
+        DATA_FILE.write_text("[]", encoding="utf-8")
+
+
+def _append_message(topic: str, raw_payload: str) -> None:
+    _ensure_data_file()
+    try:
+        payload_obj: Any = json.loads(raw_payload)
+    except Exception:
+        payload_obj = raw_payload
+
+    record = {
+        "received_at": datetime.now(timezone.utc).isoformat(),
+        "topic": topic,
+        "payload": payload_obj,
+    }
+
+    try:
+        existing = json.loads(DATA_FILE.read_text(encoding="utf-8") or "[]")
+        if not isinstance(existing, list):
+            existing = []
+    except Exception:
+        existing = []
+
+    existing.append(record)
+    DATA_FILE.write_text(json.dumps(existing, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def _to_float(value: Any) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_process_switch(payload: dict[str, Any]) -> int:
+    raw_value = payload.get("process_switch", 0)
+    try:
+        return 1 if int(raw_value) == 1 else 0
+    except (TypeError, ValueError):
+        return 0
+
+
+def _parse_batch_switch(payload: dict[str, Any]) -> int:
+    raw_value = payload.get("batch_switch", 0)
+    try:
+        return 1 if int(raw_value) == 1 else 0
+    except (TypeError, ValueError):
+        return 0
+
+
+def _parse_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return default
+
+
+def _batch_code_letter(source: str) -> str:
+    for ch in str(source or ""):
+        if ch.isalpha():
+            return ch.upper()
+    return "X"
+
+
+def _generate_batch_code(recipe_type: str, batch_id: int) -> str:
+    # Same spirit as dispatch/raw-material codes: PREFIX + LETTER + 5 digits.
+    total_digits = 5
+    max_numeric = 10 ** total_digits
+    multiplier = 7919
+    offset = 12345
+    mapped = ((int(batch_id) * multiplier) + offset) % max_numeric
+    return f"PB{_batch_code_letter(recipe_type)}{mapped:0{total_digits}d}"
+
+
+def _upsert_machine_state(is_running: bool, active_batch: int | None = None) -> None:
+    with db_engine.begin() as conn:
+        conn.execute(
+            text(
+                f"""
+                INSERT INTO {DB_SCHEMA}.machine_state (id, is_running, active_batch_id, updated_at)
+                VALUES (1, :is_running, :active_batch_id, NOW())
+                ON CONFLICT (id) DO UPDATE
+                SET is_running = EXCLUDED.is_running,
+                    active_batch_id = EXCLUDED.active_batch_id,
+                    updated_at = NOW()
+                """
+            ),
+            {"is_running": is_running, "active_batch_id": active_batch},
+        )
+
+
+def _insert_plc_snapshot(payload: dict[str, Any], process_status: int) -> None:
+    with db_engine.begin() as conn:
+        conn.execute(
+            text(
+                f"""
+                INSERT INTO {DB_SCHEMA}.plc_data_snapshots (
+                    running_status,
+                    process_status,
+                    ambient_temp,
+                    humidity,
+                    pressure_before,
+                    pressure_after,
+                    conditioner_temp,
+                    bagging_temp,
+                    motor_temp,
+                    motor_rpm,
+                    pellet_feeder_speed,
+                    pellet_motor_load,
+                    recorded_at
+                ) VALUES (
+                    :running_status,
+                    :process_status,
+                    :ambient_temp,
+                    :humidity,
+                    :pressure_before,
+                    :pressure_after,
+                    :conditioner_temp,
+                    :bagging_temp,
+                    :motor_temp,
+                    :motor_rpm,
+                    :pellet_feeder_speed,
+                    :pellet_motor_load,
+                    NOW()
+                )
+                """
+            ),
+            {
+                "running_status": bool(process_status == 100),
+                "process_status": process_status,
+                "ambient_temp": _to_float(payload.get("room_temp")),
+                "humidity": _to_float(payload.get("humidity")),
+                "pressure_before": _to_float(payload.get("pressure_before")),
+                "pressure_after": _to_float(payload.get("pressure_after")),
+                "conditioner_temp": _to_float(payload.get("conditioner_temp")),
+                "bagging_temp": _to_float(payload.get("bagging_temp")),
+                "motor_temp": _to_float(payload.get("motor_temp")),
+                "motor_rpm": _to_float(payload.get("motor_rpm")),
+                "pellet_feeder_speed": _to_float(payload.get("motor_speed")),
+                "pellet_motor_load": _to_float(payload.get("motor_current")),
+            },
+        )
+
+
+def _create_n720_batch(payload: dict[str, Any]) -> int | None:
+    recipe_id = _parse_int(payload.get("recipe_number"), 0)
+    set_batch = _to_float(payload.get("set_batch"))
+    current_batch = max(0, _parse_int(payload.get("current_batch"), 0))
+    bag_count = _to_float(payload.get("bag_count"))
+
+    if set_batch is None or set_batch <= 0:
+        return None
+
+    with db_engine.begin() as conn:
+        recipe_row = None
+        if recipe_id > 0:
+            recipe_row = conn.execute(
+                text(
+                    f"""
+                    SELECT id, name
+                    FROM {DB_SCHEMA}.recipe_types
+                    WHERE id = :recipe_id
+                    LIMIT 1
+                    """
+                ),
+                {"recipe_id": recipe_id},
+            ).mappings().first()
+
+        recipe_type = str(recipe_row["name"] or "").strip() if recipe_row else ""
+        product_name = recipe_type or "Pending Recipe Selection"
+
+        inserted = conn.execute(
+            text(
+                f"""
+                INSERT INTO {DB_SCHEMA}.production_batches (
+                    batch_no,
+                    date,
+                    recipe_type,
+                    product_name,
+                    batch_size,
+                    mop,
+                    water,
+                    num_bags,
+                    weight_per_bag,
+                    output,
+                    hmi_duration_seconds,
+                    hmi_completed_count,
+                    hmi_status,
+                    hmi_started_at,
+                    hmi_completed_at,
+                    stock_posted,
+                    rm_reduced,
+                    rm_shortage_flag,
+                    rm_shortage_detail,
+                    created_at,
+                    last_modified_at
+                ) VALUES (
+                    NULL,
+                    NOW(),
+                    :recipe_type,
+                    :product_name,
+                    :batch_size,
+                    NULL,
+                    NULL,
+                    :num_bags,
+                    NULL,
+                    0,
+                    NULL,
+                    :hmi_completed_count,
+                    'running',
+                    NOW(),
+                    NULL,
+                    FALSE,
+                    FALSE,
+                    FALSE,
+                    NULL,
+                    NOW(),
+                    NOW()
+                )
+                RETURNING id
+                """
+            ),
+            {
+                "recipe_type": recipe_type or None,
+                "product_name": product_name,
+                "batch_size": float(set_batch),
+                "num_bags": float(bag_count) if bag_count is not None else None,
+                "hmi_completed_count": current_batch,
+            },
+        ).mappings().first()
+        if not inserted:
+            return None
+        new_batch_id = int(inserted["id"])
+
+        batch_code = _generate_batch_code(recipe_type=recipe_type or product_name, batch_id=new_batch_id)
+        conn.execute(
+            text(
+                f"""
+                UPDATE {DB_SCHEMA}.production_batches
+                SET batch_no = :batch_no, last_modified_at = NOW()
+                WHERE id = :batch_id
+                """
+            ),
+            {"batch_no": batch_code, "batch_id": new_batch_id},
+        )
+
+        if recipe_row:
+            recipe_material_rows = conn.execute(
+                text(
+                    f"""
+                    SELECT rm_name, quantity
+                    FROM {DB_SCHEMA}.recipe_materials
+                    WHERE recipe_id = :recipe_id
+                    ORDER BY id ASC
+                    """
+                ),
+                {"recipe_id": recipe_id},
+            ).mappings().all()
+
+            for material in recipe_material_rows:
+                conn.execute(
+                    text(
+                        f"""
+                        INSERT INTO {DB_SCHEMA}.production_batch_materials (
+                            batch_id,
+                            rm_name,
+                            quantity,
+                            total_quantity,
+                            created_at
+                        ) VALUES (
+                            :batch_id,
+                            :rm_name,
+                            :quantity,
+                            NULL,
+                            NOW()
+                        )
+                        """
+                    ),
+                    {
+                        "batch_id": new_batch_id,
+                        "rm_name": str(material["rm_name"] or "").strip(),
+                        "quantity": float(material["quantity"] or 0),
+                    },
+                )
+
+        return new_batch_id
+
+
+def _update_n720_batch(payload: dict[str, Any], batch_id: int) -> None:
+    current_batch = max(0, _parse_int(payload.get("current_batch"), 0))
+    bag_count = _to_float(payload.get("bag_count"))
+    with db_engine.begin() as conn:
+        conn.execute(
+            text(
+                f"""
+                UPDATE {DB_SCHEMA}.production_batches
+                SET hmi_completed_count = :current_batch,
+                    num_bags = :bag_count,
+                    hmi_status = 'running',
+                    last_modified_at = NOW()
+                WHERE id = :batch_id
+                """
+            ),
+            {
+                "current_batch": current_batch,
+                "bag_count": float(bag_count) if bag_count is not None else None,
+                "batch_id": batch_id,
+            },
+        )
+
+
+def _stop_n720_batch(batch_id: int) -> None:
+    with db_engine.begin() as conn:
+        conn.execute(
+            text(
+                f"""
+                UPDATE {DB_SCHEMA}.production_batches
+                SET hmi_status = 'stopped',
+                    hmi_completed_at = NOW(),
+                    last_modified_at = NOW()
+                WHERE id = :batch_id
+                """
+            ),
+            {"batch_id": batch_id},
+        )
+
+
+def _handle_n720_batch_flow(payload: dict[str, Any], process_switch: int) -> None:
+    global last_batch_switch, active_batch_id
+    batch_switch = _parse_batch_switch(payload)
+    previous_batch_switch = last_batch_switch
+
+    # Operation gate: when process switch is 0, batch logic should not run.
+    if process_switch != 1:
+        last_batch_switch = batch_switch
+        return
+
+    if batch_switch == 1 and previous_batch_switch != 1:
+        # OFF -> ON: create a new batch.
+        created_id = _create_n720_batch(payload)
+        if created_id is not None:
+            active_batch_id = created_id
+            _upsert_machine_state(is_running=True, active_batch=active_batch_id)
+    elif batch_switch == 1 and active_batch_id is not None:
+        # Keep updating same running batch while switch remains ON.
+        _update_n720_batch(payload, active_batch_id)
+        _upsert_machine_state(is_running=True, active_batch=active_batch_id)
+    elif batch_switch == 0 and previous_batch_switch == 1:
+        # ON -> OFF: stop current batch and wait for next ON cycle.
+        if active_batch_id is not None:
+            _stop_n720_batch(active_batch_id)
+            active_batch_id = None
+        _upsert_machine_state(is_running=True, active_batch=None)
+
+    last_batch_switch = batch_switch
+
+
+def _handle_plc_db_flow(raw_payload: str) -> None:
+    global last_process_switch, active_batch_id
+    try:
+        payload_obj = json.loads(raw_payload)
+    except Exception:
+        return
+    if not isinstance(payload_obj, dict):
+        return
+
+    process_switch = _parse_process_switch(payload_obj)
+    with plc_state_lock:
+        previous_switch = last_process_switch
+
+        if process_switch == 1:
+            # ON state: keep machine running and insert live snapshots with status 100.
+            _upsert_machine_state(is_running=True, active_batch=active_batch_id)
+            _insert_plc_snapshot(payload_obj, process_status=100)
+        elif previous_switch == 1 and process_switch == 0:
+            # Transition ON -> OFF: write exactly one 0-status row, then stop.
+            active_batch_id = None
+            _upsert_machine_state(is_running=False, active_batch=None)
+            _insert_plc_snapshot(payload_obj, process_status=0)
+
+        _handle_n720_batch_flow(payload_obj, process_switch)
+        last_process_switch = process_switch
+
+
+def _on_connect(client: mqtt.Client, userdata, flags, rc, properties=None):
+    if rc == 0:
+        LOG.info("Connected to MQTT broker %s:%s", MQTT_HOST, MQTT_PORT)
+        client.subscribe(MQTT_TOPIC, qos=1)
+        LOG.info("Subscribed to topic: %s", MQTT_TOPIC)
+    else:
+        LOG.error("MQTT connection failed with rc=%s", rc)
+
+
+def _on_message(client: mqtt.Client, userdata, msg: mqtt.MQTTMessage):
+    payload_text = msg.payload.decode("utf-8", errors="replace")
+    print(f"[MQTT] topic={msg.topic} payload={payload_text}")
+    _append_message(msg.topic, payload_text)
+    _handle_plc_db_flow(payload_text)
+
+
+def _start_mqtt() -> None:
+    global mqtt_client
+    with mqtt_lock:
+        if mqtt_client is not None:
+            return
+
+        client = mqtt.Client(client_id="n720-fastapi-listener", transport="websockets")
+        if MQTT_USERNAME or MQTT_PASSWORD:
+            client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
+        client.ws_set_options(path=MQTT_WS_PATH)
+        client.on_connect = _on_connect
+        client.on_message = _on_message
+        client.connect(MQTT_HOST, MQTT_PORT, keepalive=MQTT_KEEPALIVE)
+        client.loop_start()
+        mqtt_client = client
+
+
+def _stop_mqtt() -> None:
+    global mqtt_client
+    with mqtt_lock:
+        if mqtt_client is None:
+            return
+        mqtt_client.loop_stop()
+        mqtt_client.disconnect()
+        mqtt_client = None
+
+
+@app.on_event("startup")
+def startup_event() -> None:
+    _ensure_data_file()
+    with db_engine.begin() as conn:
+        conn.execute(text("SELECT 1"))
+    _start_mqtt()
+
+
+@app.on_event("shutdown")
+def shutdown_event() -> None:
+    _stop_mqtt()
+
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    return {"status": "ok", "service": "n720"}
