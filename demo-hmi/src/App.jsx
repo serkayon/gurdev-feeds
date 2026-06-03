@@ -47,7 +47,21 @@ const BATCH_KEYS = [
   { key: "set_batch", label: "Set Batch" },
   { key: "bag_count", label: "Bag Count" },
   { key: "recipe_number", label: "Recipe No." },
+  { key: "Batch_Product", label: "Batch Product" },
+  { key: "Process_Product", label: "Process Product" },
 ];
+
+const SENSOR_SCALE = {
+  conditioner_temp: 100,
+  bagging_temp: 10,
+  cooler_room_temp: 10,
+  pressure_before: 10,
+  pressure_after: 10,
+  motor_speed: 10,
+  motor_current: 10,
+  room_temp: 10,
+  humidity: 10,
+};
 
 function getNow() {
   const d = new Date();
@@ -76,8 +90,20 @@ const INITIAL = {
   set_batch: 0,
   bag_count: 0,
   recipe_number: 0,
+  Batch_Product: 0,
+  Process_Product: 0,
   time: getNow(),
 };
+
+function buildN720Payload(source) {
+  const payload = { ...source };
+  Object.entries(SENSOR_SCALE).forEach(([key, scale]) => {
+    const value = Number(source[key]);
+    payload[key] = Number.isFinite(value) ? Math.round(value * scale) : 0;
+  });
+  return payload;
+}
+
 console.log("Initial data:", MQTT_WS_PATH);
 function SensorGauge({ label, unit, value, max, onChange }) {
   const pct = Math.min((value / max) * 100, 100);
@@ -138,14 +164,18 @@ export default function HMISimulator() {
   const clientRef = useRef(null);
   const publishIntervalRef = useRef(null);
   const shouldStayConnectedRef = useRef(true);
-  const clientIdRef = useRef(`n720-sim-${Math.random().toString(16).slice(2, 10)}`);
+  const [clientId] = useState(() => `n720-sim-${Math.random().toString(16).slice(2, 10)}`);
   const [data, setData] = useState({ ...INITIAL, time: getNow() });
-  const [publishedData, setPublishedData] = useState({ ...INITIAL, time: getNow() });
+  const [publishedData, setPublishedData] = useState(() =>
+    buildN720Payload({ ...INITIAL, time: getNow() })
+  );
   const [postStatus, setPostStatus] = useState("idle");
   const [isConnected, setIsConnected] = useState(false);
   const dataRef = useRef(data);
 
-  dataRef.current = data;
+  useEffect(() => {
+    dataRef.current = data;
+  }, [data]);
 
   const stopPublishInterval = useCallback(() => {
     if (publishIntervalRef.current) {
@@ -162,7 +192,7 @@ export default function HMISimulator() {
     `${MQTT_TRANSPORT}://${MQTT_HOST}:${MQTT_PORT}${MQTT_WS_PATH}`;
   console.log("Connecting to MQTT broker at", brokerUrl);
   const client = mqtt.connect(brokerUrl, {
-    clientId: clientIdRef.current,
+    clientId,
     username: MQTT_USERNAME,
     password: MQTT_PASSWORD,
     keepalive: MQTT_KEEPALIVE,
@@ -186,10 +216,11 @@ export default function HMISimulator() {
     const publishOnce = () => {
       if (client.connected) {
         setPostStatus("sending");
+        const payload = buildN720Payload(dataRef.current);
 
         client.publish(
           MQTT_TOPIC,
-          JSON.stringify(dataRef.current),
+          JSON.stringify(payload),
           { qos: 1 },
           (err) => {
             if (err) {
@@ -197,7 +228,7 @@ export default function HMISimulator() {
               setPostStatus("err");
             } else {
               console.log("Published");
-              setPublishedData({ ...dataRef.current });
+              setPublishedData(payload);
               setPostStatus("ok");
             }
           }
@@ -233,7 +264,7 @@ export default function HMISimulator() {
 
     setPostStatus("err");
   });
-  }, [stopPublishInterval]);
+  }, [clientId, stopPublishInterval]);
 
   const disconnectMqtt = useCallback(() => {
     shouldStayConnectedRef.current = false;

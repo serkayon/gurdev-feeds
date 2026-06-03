@@ -4,7 +4,7 @@ import base64
 import hashlib
 import os
 from pathlib import Path
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.schema import CreateSchema
 
 # Support direct execution from backend/database:
@@ -40,6 +40,7 @@ def create_schema() -> None:
 
     _ensure_schema_exists()
     Base.metadata.create_all(bind=engine)
+    _ensure_existing_columns()
     _seed_defaults()
 
 
@@ -48,6 +49,20 @@ def _ensure_schema_exists() -> None:
         return
     with engine.begin() as conn:
         conn.execute(CreateSchema(DB_SCHEMA, if_not_exists=True))
+
+
+def _ensure_existing_columns() -> None:
+    if engine.dialect.name != "postgresql":
+        return
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                f"""
+                ALTER TABLE {DB_SCHEMA}.plc_data_snapshots
+                ADD COLUMN IF NOT EXISTS process_product INTEGER
+                """
+            )
+        )
 
 
 def _seed_defaults() -> None:
@@ -73,7 +88,7 @@ def _seed_defaults() -> None:
                     pin_recipe_access_hash=_hash_password("1234"),
                     full_name="Client User",
                     role=UserRole.customer.value,
-                    company_name="Feed Mill Intelligence",
+                    company_name="",
                     phone=None,
                     address=None,
                     logo_url=None,

@@ -14,6 +14,7 @@ class PLCDataSnapshot(Base):
 
     running_status: Mapped[bool] = mapped_column(Boolean, default=False)
     process_status: Mapped[int] = mapped_column(Integer, default=0)
+    process_product: Mapped[int | None] = mapped_column(Integer, nullable=True)
     ambient_temp: Mapped[float | None] = mapped_column(Float, nullable=True)
     humidity: Mapped[float | None] = mapped_column(Float, nullable=True)
     pressure_before: Mapped[float | None] = mapped_column(Float, nullable=True)

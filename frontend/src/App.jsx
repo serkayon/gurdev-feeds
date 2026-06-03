@@ -114,7 +114,7 @@ function AppRoutes({ isBackendReachable, shouldMonitorBackend }) {
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-      {shouldMonitorBackend && !isBackendReachable && <ServerMaintenanceOverlay />}
+      {/* {shouldMonitorBackend && !isBackendReachable && <ServerMaintenanceOverlay />} */}
     </>
   )
 }

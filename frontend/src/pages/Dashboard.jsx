@@ -1,7 +1,7 @@
 import React from "react";
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { dispatchApi, plc, productionApi, stockApi } from "../api/client";
+import { configApi, dispatchApi, plc, productionApi, stockApi } from "../api/client";
 import {
   XAxis,
   YAxis,
@@ -52,6 +52,7 @@ export default function Dashboard() {
   const [plcData, setPlcData] = useState(null);
   const [plcHistory, setPlcHistory] = useState([]);
   const [machineStatus, setMachineStatus] = useState(null);
+  const [recipes, setRecipes] = useState([]);
   const [dateTime, setDateTime] = useState(new Date());
   const [todayMetrics, setTodayMetrics] = useState({
     rawMaterialStockKg: 0,
@@ -189,6 +190,12 @@ export default function Dashboard() {
     return () => clearInterval(t);
   }, []);
 
+  useEffect(() => {
+    configApi.recipes()
+      .then(({ data }) => setRecipes(Array.isArray(data) ? data : []))
+      .catch(() => setRecipes([]));
+  }, []);
+
   //Update the PLC data and history every 5 seconds
   useEffect(() => {
     const refresh = async () => {
@@ -321,14 +328,37 @@ const [showRecipePopup, setShowRecipePopup] = useState(false)
   const activeProgressLabel = activeBatch?.progress_label || "N/A";
   const activeCompletedCount = activeBatch?.completed_count ?? "N/A";
   const activeTotalCount = activeBatch?.planned_count ?? "N/A";
-  const isMachineRunning =
+  const latestHeartbeatAt = parseApiDate(machineStatus?.updated_at || plcData?.recorded_at);
+  const isMachineOnline =
+    latestHeartbeatAt != null &&
+    dateTime.getTime() - latestHeartbeatAt.getTime() <= 5 * 60 * 1000;
+  const isProcessRunning =
     typeof machineStatus?.is_running === "boolean"
       ? machineStatus.is_running
       : typeof plcData?.running_status === "boolean"
       ? plcData.running_status
       : String(plcData?.running_status || "").toLowerCase() === "running";
+  const processProductNumber =
+    plcData?.process_product ?? machineStatus?.process_product ?? null;
+  const processRecipe = recipes.find(
+    (item) => Number(item?.id) === Number(processProductNumber)
+  );
+  const processRecipeLabel =
+    processProductNumber != null && processProductNumber !== ""
+      ? `${processRecipe?.name || "Recipe"}-(${processProductNumber})`
+      : "N/A";
+  const batchProductName = activeBatch?.product_name || activeBatch?.recipe_type || "";
+  const batchRecipe = recipes.find((item) => {
+    const recipeName = String(item?.name || "").trim().toLowerCase();
+    const productName = String(batchProductName || "").trim().toLowerCase();
+    return recipeName && productName && recipeName === productName;
+  });
+  const batchProductLabel = batchProductName
+    ? `${batchProductName}-${batchRecipe?.id != null ? `(${batchRecipe.id})` : "(N/A)"}`
+    : "N/A";
+  const batchRecipeLabel = batchProductName || "N/A";
   const sensorDisplay = (value, unit = "") => {
-    if (!isMachineRunning || value == null) {
+    if (!isProcessRunning || value == null) {
       return "N/A";
     }
     return unit ? `${value} ${unit}` : String(value);
@@ -414,7 +444,7 @@ const chartData = fallbackData.map((item, index) => ({
   return (
     <div className="space-y-6 pb-2 md:pb-28 lg:pb-0">
 
-      {/* Page title ,Machine Running Status */}
+      {/* Page title and machine data heartbeat */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 ">
         <div className="flex flex-col items-center gap-4 sm:gap-0 sm:flex-row justify-between sm:items-center w-full">
           <div className="flex items-center justify-between gap-10 sm:block">
@@ -427,23 +457,23 @@ const chartData = fallbackData.map((item, index) => ({
           </div>
           <div className="flex items-center gap-16 justify-center md:mt-0 sm:gap-3">
             <h2 className="text-xs sm:text-sm font-semibold text-slate-600 uppercase tracking-widest">
-              Machine Status :
+              Machine Data :
             </h2>
             <span
               className={`inline-flex items-center gap-1.5 md:gap-2 px-2.5 py-1 md:px-4 md:py-1.5 text-xs md:text-sm rounded-md font-semibold border transition-all duration-300 ${
-                isMachineRunning
+                isMachineOnline
                   ? "bg-emerald-100 text-emerald-800 border-emerald-300 shadow-inner"
                   : "bg-red-100 text-red-800 border-red-300 shadow-inner"
               }`}
             >
               <span
                 className={`w-2 h-2 md:w-2.5 md:h-2.5 rounded-full ${
-                  isMachineRunning
+                  isMachineOnline
                     ? "bg-emerald-600 animate-pulse shadow-[0_0_6px_rgba(16,185,129,0.7)]"
                     : "bg-red-600 shadow-[0_0_6px_rgba(239,68,68,0.7)]"
                 }`}
               />
-              {isMachineRunning ? "RUNNING" : "STOPPED"}
+              {isMachineOnline ? "RUNNING" : "STOPPED"}
             </span>
           </div>
         </div>
@@ -464,6 +494,15 @@ const chartData = fallbackData.map((item, index) => ({
             </h2>
 
        
+          </div>
+
+          <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-lg border border-slate-300 bg-slate-50 px-4 py-3 text-sm">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Batch Product
+            </span>
+            <span className="font-bold text-[#245658] break-words text-right">
+              {batchProductLabel}
+            </span>
           </div>
 
           <div className="rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4">
@@ -508,13 +547,13 @@ const chartData = fallbackData.map((item, index) => ({
             </div>
            <div className="flex items-center justify-between flex-wrap gap-3 mt-3">
 
-  {/* LEFT - Running Product */}
+  {/* LEFT - Batch Product */}
   <div >
     <p className="text-xs text-slate-500 font-semibold">
-      Running Product
+      Batch Recipe
     </p>
     <p className="mt-1 text-xl md:text-2xl font-semibold text-[#245658] break-all tracking-wide leading-normal">
-      {activeBatch?.product_name || "N/A"}
+      {batchRecipeLabel}
     </p>
   </div>
  <div className="h-10 w-px bg-slate-400 hidden md:block "></div>
@@ -641,11 +680,36 @@ const chartData = fallbackData.map((item, index) => ({
 
         
         <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-card w-full">
-          <div className="flex items-center  gap-2 mb-4">
-            <img src={live} alt="live" className="w-6 h-6" />
-            <h2 className="text-sm font-semibold text-slate-900 uppercase tracking-wider ">
-              Live Sensors
-            </h2>
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <div className="flex items-center gap-2">
+              <img src={live} alt="live" className="w-6 h-6" />
+              <h2 className="text-sm font-semibold text-slate-900 uppercase tracking-wider ">
+                Live Sensors
+              </h2>
+            </div>
+            <span
+              className={`inline-flex items-center gap-2 px-2 py-1 md:px-2.5 md:py-1.5 text-[10px] sm:text-xs md:text-sm rounded-md font-semibold whitespace-nowrap ${
+                isProcessRunning
+                  ? "bg-green-100 text-green-700"
+                  : "bg-red-100 text-red-700"
+              }`}
+            >
+              <span
+                className={`inline-block w-2 h-2 md:w-2.5 md:h-2.5 rounded-full ${
+                  isProcessRunning ? "bg-emerald-600 animate-pulse" : "bg-red-600"
+                }`}
+              />
+              {isProcessRunning ? "RUNNING" : "STOPPED"}
+            </span>
+          </div>
+
+          <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-lg border border-slate-300 bg-slate-50 px-4 py-3 text-sm">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Process Product
+            </span>
+            <span className="font-bold text-[#245658] break-words text-right">
+              {isProcessRunning ? processRecipeLabel : "N/A"}
+            </span>
           </div>
 
           {/* Sensor Grid */}

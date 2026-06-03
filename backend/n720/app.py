@@ -106,6 +106,13 @@ def _to_float(value: Any) -> float | None:
         return None
 
 
+def _scaled_float(value: Any, divisor: float) -> float | None:
+    parsed = _to_float(value)
+    if parsed is None:
+        return None
+    return parsed / divisor
+
+
 def _parse_process_switch(payload: dict[str, Any]) -> int:
     raw_value = payload.get("process_switch", 0)
     try:
@@ -164,6 +171,7 @@ def _upsert_machine_state(is_running: bool, active_batch: int | None = None) -> 
 
 
 def _insert_plc_snapshot(payload: dict[str, Any], process_status: int) -> None:
+    process_product = _parse_int(payload.get("Process_Product"), 0)
     with db_engine.begin() as conn:
         conn.execute(
             text(
@@ -171,6 +179,7 @@ def _insert_plc_snapshot(payload: dict[str, Any], process_status: int) -> None:
                 INSERT INTO {DB_SCHEMA}.plc_data_snapshots (
                     running_status,
                     process_status,
+                    process_product,
                     ambient_temp,
                     humidity,
                     pressure_before,
@@ -185,6 +194,7 @@ def _insert_plc_snapshot(payload: dict[str, Any], process_status: int) -> None:
                 ) VALUES (
                     :running_status,
                     :process_status,
+                    :process_product,
                     :ambient_temp,
                     :humidity,
                     :pressure_before,
@@ -202,22 +212,23 @@ def _insert_plc_snapshot(payload: dict[str, Any], process_status: int) -> None:
             {
                 "running_status": bool(process_status == 100),
                 "process_status": process_status,
-                "ambient_temp": _to_float(payload.get("room_temp")),
-                "humidity": _to_float(payload.get("humidity")),
-                "pressure_before": _to_float(payload.get("pressure_before")),
-                "pressure_after": _to_float(payload.get("pressure_after")),
-                "conditioner_temp": _to_float(payload.get("conditioner_temp")),
-                "bagging_temp": _to_float(payload.get("bagging_temp")),
-                "motor_temp": _to_float(payload.get("motor_temp")),
-                "motor_rpm": _to_float(payload.get("motor_rpm")),
-                "pellet_feeder_speed": _to_float(payload.get("motor_speed")),
-                "pellet_motor_load": _to_float(payload.get("motor_current")),
+                "process_product": process_product,
+                "ambient_temp": _scaled_float(payload.get("room_temp"), 10),
+                "humidity": _scaled_float(payload.get("humidity"), 10),
+                "pressure_before": _scaled_float(payload.get("pressure_before"), 10),
+                "pressure_after": _scaled_float(payload.get("pressure_after"), 10),
+                "conditioner_temp": _scaled_float(payload.get("conditioner_temp"), 100),
+                "bagging_temp": _scaled_float(payload.get("bagging_temp"), 10),
+                "motor_temp": _scaled_float(payload.get("motor_temp"), 10),
+                "motor_rpm": _scaled_float(payload.get("motor_rpm"), 10),
+                "pellet_feeder_speed": _scaled_float(payload.get("motor_speed"), 10),
+                "pellet_motor_load": _scaled_float(payload.get("motor_current"), 10),
             },
         )
 
 
 def _create_n720_batch(payload: dict[str, Any]) -> int | None:
-    recipe_id = _parse_int(payload.get("recipe_number"), 0)
+    recipe_id = _parse_int(payload.get("Batch_Product"), 0)
     set_batch = _to_float(payload.get("set_batch"))
     current_batch = max(0, _parse_int(payload.get("current_batch"), 0))
     bag_count = _to_float(payload.get("bag_count"))
@@ -362,6 +373,7 @@ def _create_n720_batch(payload: dict[str, Any]) -> int | None:
 
 def _update_n720_batch(payload: dict[str, Any], batch_id: int) -> None:
     current_batch = max(0, _parse_int(payload.get("current_batch"), 0))
+    set_batch = _to_float(payload.get("set_batch"))
     bag_count = _to_float(payload.get("bag_count"))
     with db_engine.begin() as conn:
         conn.execute(
@@ -369,6 +381,7 @@ def _update_n720_batch(payload: dict[str, Any], batch_id: int) -> None:
                 f"""
                 UPDATE {DB_SCHEMA}.production_batches
                 SET hmi_completed_count = :current_batch,
+                    batch_size = COALESCE(:set_batch, batch_size),
                     num_bags = :bag_count,
                     hmi_status = 'running',
                     last_modified_at = NOW()
@@ -377,6 +390,7 @@ def _update_n720_batch(payload: dict[str, Any], batch_id: int) -> None:
             ),
             {
                 "current_batch": current_batch,
+                "set_batch": float(set_batch) if set_batch is not None and set_batch > 0 else None,
                 "bag_count": float(bag_count) if bag_count is not None else None,
                 "batch_id": batch_id,
             },
@@ -404,27 +418,22 @@ def _handle_n720_batch_flow(payload: dict[str, Any], process_switch: int) -> Non
     batch_switch = _parse_batch_switch(payload)
     previous_batch_switch = last_batch_switch
 
-    # Operation gate: when process switch is 0, batch logic should not run.
-    if process_switch != 1:
-        last_batch_switch = batch_switch
-        return
-
     if batch_switch == 1 and previous_batch_switch != 1:
         # OFF -> ON: create a new batch.
         created_id = _create_n720_batch(payload)
         if created_id is not None:
             active_batch_id = created_id
-            _upsert_machine_state(is_running=True, active_batch=active_batch_id)
+            _upsert_machine_state(is_running=process_switch == 1, active_batch=active_batch_id)
     elif batch_switch == 1 and active_batch_id is not None:
         # Keep updating same running batch while switch remains ON.
         _update_n720_batch(payload, active_batch_id)
-        _upsert_machine_state(is_running=True, active_batch=active_batch_id)
+        _upsert_machine_state(is_running=process_switch == 1, active_batch=active_batch_id)
     elif batch_switch == 0 and previous_batch_switch == 1:
         # ON -> OFF: stop current batch and wait for next ON cycle.
         if active_batch_id is not None:
             _stop_n720_batch(active_batch_id)
             active_batch_id = None
-        _upsert_machine_state(is_running=True, active_batch=None)
+        _upsert_machine_state(is_running=process_switch == 1, active_batch=None)
 
     last_batch_switch = batch_switch
 
@@ -448,9 +457,10 @@ def _handle_plc_db_flow(raw_payload: str) -> None:
             _insert_plc_snapshot(payload_obj, process_status=100)
         elif previous_switch == 1 and process_switch == 0:
             # Transition ON -> OFF: write exactly one 0-status row, then stop.
-            active_batch_id = None
-            _upsert_machine_state(is_running=False, active_batch=None)
+            _upsert_machine_state(is_running=False, active_batch=active_batch_id)
             _insert_plc_snapshot(payload_obj, process_status=0)
+        else:
+            _upsert_machine_state(is_running=False, active_batch=active_batch_id)
 
         _handle_n720_batch_flow(payload_obj, process_switch)
         last_process_switch = process_switch
@@ -504,6 +514,14 @@ def startup_event() -> None:
     _ensure_data_file()
     with db_engine.begin() as conn:
         conn.execute(text("SELECT 1"))
+        conn.execute(
+            text(
+                f"""
+                ALTER TABLE {DB_SCHEMA}.plc_data_snapshots
+                ADD COLUMN IF NOT EXISTS process_product INTEGER
+                """
+            )
+        )
     _start_mqtt()
 
 
