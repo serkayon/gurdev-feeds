@@ -1,5 +1,5 @@
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime
 from math import floor
 from typing import Mapping, Sequence
 
@@ -10,8 +10,7 @@ from app.models.dispatch import DispatchEntry, DispatchProduct
 from app.models.production import ProductionBatch, ProductionBatchMaterial
 from app.models.raw_material import RawMaterialEntry
 from app.models.stock import FeedStock, FeedStockCurrent, RMStockLedger, RawMaterialStock
-
-IST_OFFSET = timedelta(hours=5, minutes=30)
+from app.utils.timezone import app_now
 
 
 # Start of day.
@@ -141,7 +140,7 @@ def get_rm_available_stock(
         return 0.0
 
     day = _start_of_day(date)
-    today = _start_of_day(datetime.utcnow())
+    today = _start_of_day(app_now())
     if day >= today:
         current_row = db.execute(
             select(RawMaterialStock).where(
@@ -433,7 +432,7 @@ def _get_or_create_rm_stock_row(
     row = RawMaterialStock(
         rm_name=normalized_rm_name,
         quantity=opening,
-        last_modified_at=datetime.utcnow())
+        last_modified_at=app_now())
     db.add(row)
     db.flush()
     return row
@@ -515,7 +514,7 @@ def _get_or_create_feed_current_row(
         feed_type=normalized_feed_type,
         bag_weight_grams=normalized_bag_weight,
         quantity=opening,
-        last_modified_at=datetime.utcnow())
+        last_modified_at=app_now())
     db.add(row)
     db.flush()
     return row
@@ -549,7 +548,7 @@ def add_rm_received(
             db=db,
             rm_name=normalized_rm_name)
         current_row.quantity = float(row.closing_stock or 0)
-        current_row.last_modified_at = datetime.utcnow()
+        current_row.last_modified_at = app_now()
 
 
 # Add rm consumption.
@@ -593,7 +592,7 @@ def add_rm_consumption(
 
     if update_snapshot and current_row is not None:
         current_row.quantity = float(row.closing_stock or 0)
-        current_row.last_modified_at = datetime.utcnow()
+        current_row.last_modified_at = app_now()
 
 
 # Add feed produced.
@@ -625,7 +624,7 @@ def add_feed_produced(
         feed_type=normalized_feed_type,
         bag_weight_grams=bag_weight_grams)
     current_row.quantity = float(row.closing_stock or 0)
-    current_row.last_modified_at = datetime.utcnow()
+    current_row.last_modified_at = app_now()
 
 
 # Add feed dispatched.
@@ -668,7 +667,7 @@ def add_feed_dispatched(
     )
 
     current_row.quantity = float(row.closing_stock or 0)
-    current_row.last_modified_at = datetime.utcnow()
+    current_row.last_modified_at = app_now()
 
 
 # Rebuild rm stock ledger.
@@ -843,7 +842,7 @@ def rebuild_rm_stock_snapshot(db: Session) -> None:
             continue
         existing_by_name[rm_name] = row
 
-    now = datetime.utcnow()
+    now = app_now()
     for rm_name, quantity in latest_by_name.items():
         row = existing_by_name.get(rm_name)
         if row is None:
@@ -901,7 +900,7 @@ def rebuild_feed_stock_ledger(db: Session) -> None:
     )
     for row in current_rows:
         row.quantity = 0
-        row.last_modified_at = datetime.utcnow()
+        row.last_modified_at = app_now()
     db.flush()
 
     produced_rows = (
@@ -941,13 +940,11 @@ def rebuild_feed_stock_ledger(db: Session) -> None:
     )
     dispatched_by_key: dict[tuple[datetime, str, int | None], float] = defaultdict(float)
     for date, product_type, weight_per_bag, total_weight in dispatch_rows:
-        # Dispatch entries are stored in UTC-naive form after API parsing.
-        # Shift to IST wall clock before daily ledger bucketing.
         feed_type = _normalize_feed_type(product_type)
         if not feed_type:
             continue
         bag_weight_grams = _normalize_bag_weight_grams(weight_per_bag)
-        ledger_date = _start_of_day(date + IST_OFFSET)
+        ledger_date = _start_of_day(date)
         key = (ledger_date, feed_type, bag_weight_grams)
         dispatched_by_key[key] += float(total_weight or 0)
 
@@ -1035,7 +1032,7 @@ def rebuild_feed_stock_snapshot(db: Session) -> None:
         existing_by_key[(feed_type, bag_weight_grams)] = row
 
     latest_by_key: dict[tuple[str, int | None], float] = {}
-    now = datetime.utcnow()
+    now = app_now()
     for row in latest_rows:
         feed_type = _normalize_feed_type(row.feed_type)
         bag_weight_grams = _normalize_bag_weight_key(row.bag_weight_grams)

@@ -30,6 +30,7 @@ if not DATABASE_URL:
     )
 
 DB_SCHEMA = os.getenv("DB_SCHEMA", "poultry1")
+APP_TIMEZONE = os.getenv("APP_TIMEZONE", os.getenv("TIMEZONE", "Asia/Kolkata"))
 DEBUG = str(os.getenv("DEBUG", "false")).strip().lower() in {
     "1",
     "true",
@@ -42,7 +43,7 @@ DEBUG = str(os.getenv("DEBUG", "false")).strip().lower() in {
 
 connect_args = {}
 if DATABASE_URL.startswith("postgresql"):
-    connect_args["options"] = f"-csearch_path={DB_SCHEMA}"
+    connect_args["options"] = f"-csearch_path={DB_SCHEMA} -ctimezone={APP_TIMEZONE}"
 
 engine = create_engine(
     DATABASE_URL,

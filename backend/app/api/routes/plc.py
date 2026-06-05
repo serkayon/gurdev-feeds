@@ -1,11 +1,12 @@
 # PLC monitoring and machine control routes.
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from ..fastapi_compat import Blueprint, jsonify, request
 from sqlalchemy import case, func, select
 
 from ..common import db_session, dt, error, serialize_batch
+from app.config import get_settings
 from app.models.plc import PLCDataSnapshot
 from app.models.production import ProductionBatch, ProductionBatchMaterial, ProductionReport
 from ...services.plc_state import (
@@ -18,8 +19,10 @@ from ...services.production_runtime import (
     normalize_batch_count,
     sync_active_batch_progress)
 from ...services.stock import collect_rm_shortages, format_rm_shortage_message
+from ...utils.timezone import app_now
 
 plc_bp = Blueprint("plc", __name__, url_prefix="/api/plc")
+settings = get_settings()
 
 # Serialize the latest PLC snapshot into API payload form.
 
@@ -141,6 +144,7 @@ def _machine_status_payload(machine_state, latest_row: PLCDataSnapshot | None, a
         "process_product": latest_row.process_product if latest_row else None,
         "active_batch_id": machine_state.active_batch_id,
         "active_batch": active_batch,
+        "idle_timeout_minutes": settings.n720_idle_timeout_minutes,
         "updated_at": dt(machine_state.updated_at),
         "last_snapshot_at": dt(latest_row.recorded_at) if latest_row else None,
     }
@@ -213,7 +217,7 @@ def plc_history():
 
             rows = db.execute(query).scalars().all()
         else:
-            since = datetime.utcnow() - timedelta(minutes=minutes)
+            since = app_now() - timedelta(minutes=minutes)
             rows = (
                 db.execute(
                     select(PLCDataSnapshot)
@@ -319,10 +323,10 @@ def machine_start():
                 batch.rm_shortage_detail = None
 
             if batch.hmi_started_at is None:
-                batch.hmi_started_at = datetime.utcnow()
+                batch.hmi_started_at = app_now()
             batch.hmi_status = RUN_STATUS_RUNNING
             batch.hmi_completed_at = None
-            batch.last_modified_at = datetime.utcnow()
+            batch.last_modified_at = app_now()
 
         machine_state = set_machine_running(
             db,
@@ -345,7 +349,7 @@ def machine_stop():
         if machine_state.active_batch_id:
             active_batch = db.get(ProductionBatch, machine_state.active_batch_id)
             if active_batch and (active_batch.hmi_status or "").lower() != RUN_STATUS_COMPLETED:
-                now = datetime.utcnow()
+                now = app_now()
                 if active_batch.hmi_started_at is None:
                     active_batch.hmi_started_at = now
                 active_batch.hmi_status = RUN_STATUS_STOPPED

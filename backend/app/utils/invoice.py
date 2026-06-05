@@ -1,6 +1,6 @@
 # Generate professional invoices as PDF — Navy/Gold theme matching production report.
 
-from datetime import datetime, date
+from datetime import date
 from io import BytesIO
  
 from reportlab.lib import colors
@@ -13,6 +13,8 @@ from reportlab.platypus import (
     HRFlowable, Image, Paragraph, SimpleDocTemplate,
     Spacer, Table, TableStyle,
 )
+
+from .timezone import app_now
  
  
 # Handle generate invoice pdf.
@@ -408,7 +410,7 @@ def generate_invoice_pdf(
     # Bottom timestamp strip
     ts_tbl = Table(
         [[Paragraph(
-            f"Generated on {datetime.now().strftime('%d-%m-%Y %H:%M:%S')}   |   {company_name}   |   {inv_no}",
+            f"Generated on {app_now().strftime('%d-%m-%Y %H:%M:%S')}   |   {company_name}   |   {inv_no}",
             S("TS", fontSize=6.5, textColor=HexColor("#AAAAAA"), alignment=TA_CENTER),
         )]],
         colWidths=[W],

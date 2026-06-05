@@ -17,6 +17,7 @@ const MQTT_TRANSPORT = import.meta.env.VITE_N720_EMQX_TRANSPORT;
 const MQTT_WS_PATH = import.meta.env.VITE_N720_EMQX_WS_PATH;
 const MQTT_PUBLISH_INTERVAL_MS = toNumber(import.meta.env.VITE_PUBLISH_INTERVAL_MS, 5000);
 const MQTT_AUTO_PUBLISH = String(import.meta.env.VITE_AUTO_PUBLISH || "false").toLowerCase() === "true";
+const APP_TIME_ZONE = import.meta.env.VITE_APP_TIMEZONE || "Asia/Kolkata";
 const DEVICES = [
   "Process_Sensor_System",
   "Process_Sensor_System_Demo",
@@ -64,9 +65,18 @@ const SENSOR_SCALE = {
 };
 
 function getNow() {
-  const d = new Date();
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())},${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: APP_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day},${values.hour}:${values.minute}:${values.second}`;
 }
 
 const INITIAL = {

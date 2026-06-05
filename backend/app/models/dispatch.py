@@ -3,6 +3,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from datetime import datetime
 
 from ..db import Base
+from ..utils.timezone import app_now
 
 
 # Define DispatchEntry.
@@ -19,7 +20,7 @@ class DispatchEntry(Base):
     pincode: Mapped[str | None] = mapped_column(String(10), nullable=True)
     vehicle_no: Mapped[str] = mapped_column(String(50))
     price: Mapped[float | None] = mapped_column(Float, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=app_now)
     last_modified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     products: Mapped[list["DispatchProduct"]] = relationship(
@@ -43,7 +44,7 @@ class DispatchProduct(Base):
     num_bags: Mapped[float] = mapped_column(Float)
     weight_per_bag: Mapped[float] = mapped_column(Float)
     total_weight: Mapped[float] = mapped_column(Float)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=app_now)
 
     dispatch_entry: Mapped["DispatchEntry"] = relationship(
         "DispatchEntry", back_populates="products"

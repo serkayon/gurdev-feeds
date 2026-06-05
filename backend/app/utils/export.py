@@ -1,8 +1,7 @@
 import io
 import random
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from html import escape
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from collections import OrderedDict
 
 import numpy as np
@@ -34,11 +33,7 @@ from reportlab.platypus import (
 )
 
 from .chart_generator import generate_plc_graph_images
-
-try:
-    IST_TIMEZONE = ZoneInfo("Asia/Kolkata")
-except ZoneInfoNotFoundError:
-    IST_TIMEZONE = timezone(timedelta(hours=5, minutes=30), name="IST")
+from .timezone import app_now, app_now_aware, as_app_time
 
 # Normalize rows.
 
@@ -107,7 +102,7 @@ def _excel_apply_table_style(
 # Handle generated at text.
 
 def _generated_at_text() -> str:
-    return datetime.now(IST_TIMEZONE).strftime("%d %b %Y %I:%M %p")
+    return app_now_aware().strftime("%d %b %Y %I:%M %p")
 
 # Handle export dispatch report pdf.
 
@@ -138,7 +133,7 @@ def export_dispatch_report_pdf(
     MARGIN_BOT = 20 * mm
     AVAIL_W    = PAGE_W - 1.6 * MARGIN_H
  
-    generated_at    = datetime.now().strftime("%d %B %Y, %H:%M")
+    generated_at    = app_now().strftime("%d %B %Y, %H:%M")
     normalized_rows = [list(r) if not isinstance(r, list) else r for r in rows]
     styles          = getSampleStyleSheet()
  
@@ -190,7 +185,7 @@ def export_dispatch_report_pdf(
         canvas.setFillColor(GREY_MID)
         canvas.setFont("Helvetica", 7)
         canvas.drawString(18 * mm, 5.5 * mm,
-            f"© {datetime.now().year} {company_name}  |  Confidential – Internal Use Only")
+            f"© {app_now().year} {company_name}  |  Confidential – Internal Use Only")
         canvas.drawRightString(W - 18 * mm, 5.5 * mm, "Dispatch Management System")
  
         canvas.restoreState()
@@ -359,7 +354,7 @@ def export_dispatch_entry_report_pdf(
     MARGIN_BOT = 20 * mm
     AVAIL_W    = PAGE_W - 1.6 * MARGIN_H
  
-    generated_at    = datetime.now().strftime("%d %B %Y, %H:%M")
+    generated_at    = app_now().strftime("%d %B %Y, %H:%M")
     normalized_rows = [list(r) if not isinstance(r, list) else r for r in rows]
     styles          = getSampleStyleSheet()
  
@@ -408,7 +403,7 @@ def export_dispatch_entry_report_pdf(
         canvas.setFillColor(GREY_MID)
         canvas.setFont("Helvetica", 7)
         canvas.drawString(18 * mm, 5.5 * mm,
-            f"© {datetime.now().year} {company_name}  |  Confidential – Internal Use Only")
+            f"© {app_now().year} {company_name}  |  Confidential – Internal Use Only")
         canvas.drawRightString(W - 18 * mm, 5.5 * mm, "Dispatch Management System")
  
         canvas.restoreState()
@@ -559,7 +554,7 @@ def export_raw_material_report_pdf(
     MARGIN_BOT = 20 * mm
     AVAIL_W    = PAGE_W - 2 * MARGIN_H
  
-    generated_at    = datetime.now().strftime("%d %B %Y, %H:%M")
+    generated_at    = app_now().strftime("%d %B %Y, %H:%M")
     normalized_rows = [list(r) if not isinstance(r, list) else r for r in rows]
     styles          = getSampleStyleSheet()
  
@@ -619,7 +614,7 @@ def export_raw_material_report_pdf(
         canvas.setFillColor(GREY_MID)
         canvas.setFont("Helvetica", 7)
         canvas.drawString(18 * mm, 5.5 * mm,
-            f"© {datetime.now().year} {company_name}  |  Confidential – Internal Use Only")
+            f"© {app_now().year} {company_name}  |  Confidential – Internal Use Only")
         canvas.drawRightString(W - 18 * mm, 5.5 * mm, "Raw Material Management System")
  
         canvas.restoreState()
@@ -795,7 +790,7 @@ def export_raw_material_entry_report_pdf(
     MARGIN_BOT = 20 * mm
     AVAIL_W    = PAGE_W - 2 * MARGIN_H
  
-    generated_at = datetime.now().strftime("%d %B %Y, %H:%M")
+    generated_at = app_now().strftime("%d %B %Y, %H:%M")
     styles = getSampleStyleSheet()
  
     # Pull basic meta from first section for the header badge
@@ -845,7 +840,7 @@ def export_raw_material_entry_report_pdf(
         canvas.setFillColor(GREY_MID)
         canvas.setFont("Helvetica", 7)
         canvas.drawString(18 * mm, 5.5 * mm,
-            f"© {datetime.now().year} {company_name}  |  Confidential – Internal Use Only")
+            f"© {app_now().year} {company_name}  |  Confidential – Internal Use Only")
         canvas.drawRightString(W - 18 * mm, 5.5 * mm, "Raw Material Management System")
  
         canvas.restoreState()
@@ -1018,7 +1013,7 @@ def export_production_report_pdf(
     MARGIN_BOT = 20 * mm
     AVAIL_W    = PAGE_W - 2 * MARGIN_H
  
-    generated_at    = datetime.now().strftime("%d %B %Y, %H:%M")
+    generated_at    = app_now().strftime("%d %B %Y, %H:%M")
     normalized_rows = [list(r) if not isinstance(r, list) else r for r in rows]
     styles          = getSampleStyleSheet()
  
@@ -1070,7 +1065,7 @@ def export_production_report_pdf(
         canvas.setFillColor(GREY_MID)
         canvas.setFont("Helvetica", 7)
         canvas.drawString(18 * mm, 5.5 * mm,
-            f"© {datetime.now().year} {company_name}  |  Confidential – Internal Use Only")
+            f"© {app_now().year} {company_name}  |  Confidential – Internal Use Only")
         canvas.drawRightString(W - 18 * mm, 5.5 * mm, "Production Management System")
  
         canvas.restoreState()
@@ -1209,7 +1204,7 @@ def export_batch_consumption_report_pdf(
     MARGIN_BOT = 20 * mm
     AVAIL_W    = PAGE_W - 2 * MARGIN_H
  
-    generated_at = datetime.now().strftime("%d %B %Y, %H:%M")
+    generated_at = app_now().strftime("%d %B %Y, %H:%M")
     styles       = getSampleStyleSheet()
  
     # Pull meta from first section for header badge
@@ -1257,7 +1252,7 @@ def export_batch_consumption_report_pdf(
         canvas.setFillColor(GREY_MID)
         canvas.setFont("Helvetica", 7)
         canvas.drawString(18 * mm, 5.5 * mm,
-            f"© {datetime.now().year} {company_name}  |  Confidential – Internal Use Only")
+            f"© {app_now().year} {company_name}  |  Confidential – Internal Use Only")
         canvas.drawRightString(W - 18 * mm, 5.5 * mm, "Production Management System")
  
         canvas.restoreState()
@@ -1462,7 +1457,7 @@ def export_rm_stock_report_pdf(
     MARGIN_BOT = 20 * mm
     AVAIL_W    = PAGE_W - 2 * MARGIN_H
  
-    generated_at    = datetime.now().strftime("%d %B %Y, %H:%M")
+    generated_at    = app_now().strftime("%d %B %Y, %H:%M")
     normalized_rows = [list(r) if not isinstance(r, list) else r for r in rows]
     styles          = getSampleStyleSheet()
  
@@ -1506,7 +1501,7 @@ def export_rm_stock_report_pdf(
         canvas.rect(0, 14 * mm, W, 0.4 * mm, fill=True, stroke=False)
         canvas.setFillColor(GREY_MID)
         canvas.setFont("Helvetica", 7)
-        canvas.drawString(18 * mm, 5.5 * mm, f"© {datetime.now().year} {company_name}  |  Confidential – Internal Use Only")
+        canvas.drawString(18 * mm, 5.5 * mm, f"© {app_now().year} {company_name}  |  Confidential – Internal Use Only")
         canvas.drawRightString(W - 18 * mm, 5.5 * mm, "Raw Material Management System")
         canvas.restoreState()
  
@@ -1622,7 +1617,7 @@ def export_rm_individual_stock_report_pdf(
     MARGIN_BOT = 20 * mm
     AVAIL_W    = PAGE_W - 2 * MARGIN_H
  
-    generated_at    = datetime.now().strftime("%d %B %Y, %H:%M")
+    generated_at    = app_now().strftime("%d %B %Y, %H:%M")
     normalized_rows = [list(r) if not isinstance(r, list) else r for r in rows]
     styles          = getSampleStyleSheet()
  
@@ -1664,7 +1659,7 @@ def export_rm_individual_stock_report_pdf(
         canvas.setFillColor(GREY_MID)
         canvas.setFont("Helvetica", 7)
         canvas.drawString(18 * mm, 5.5 * mm,
-            f"© {datetime.now().year} {company_name}  |  Confidential – Internal Use Only")
+            f"© {app_now().year} {company_name}  |  Confidential – Internal Use Only")
         canvas.drawRightString(W - 18 * mm, 5.5 * mm, "Raw Material Management System")
  
         canvas.restoreState()
@@ -1846,7 +1841,7 @@ def export_feed_individual_stock_report_pdf(
     MARGIN_BOT = 20 * mm
     AVAIL_W    = PAGE_W - 2 * MARGIN_H
  
-    generated_at    = datetime.now().strftime("%d %B %Y, %H:%M")
+    generated_at    = app_now().strftime("%d %B %Y, %H:%M")
     normalized_rows = [list(r) if not isinstance(r, list) else r for r in rows]
     styles          = getSampleStyleSheet()
  
@@ -1894,7 +1889,7 @@ def export_feed_individual_stock_report_pdf(
         canvas.setFillColor(GREY_MID)
         canvas.setFont("Helvetica", 7)
         canvas.drawString(18 * mm, 5.5 * mm,
-            f"© {datetime.now().year} {company_name}  |  Confidential – Internal Use Only")
+            f"© {app_now().year} {company_name}  |  Confidential – Internal Use Only")
         canvas.drawRightString(W - 18 * mm, 5.5 * mm, "Feed Stock Management System")
  
         canvas.restoreState()
@@ -2085,7 +2080,7 @@ def export_feed_stock_report_pdf(
     MARGIN_BOT = 20 * mm
     AVAIL_W    = PAGE_W - 2 * MARGIN_H
  
-    generated_at    = datetime.now().strftime("%d %B %Y, %H:%M")
+    generated_at    = app_now().strftime("%d %B %Y, %H:%M")
     normalized_rows = [list(r) if not isinstance(r, list) else r for r in rows]
     styles          = getSampleStyleSheet()
  
@@ -2129,7 +2124,7 @@ def export_feed_stock_report_pdf(
         canvas.rect(0, 14 * mm, W, 0.4 * mm, fill=True, stroke=False)
         canvas.setFillColor(GREY_MID)
         canvas.setFont("Helvetica", 7)
-        canvas.drawString(18 * mm, 5.5 * mm, f"© {datetime.now().year} {company_name}  |  Confidential – Internal Use Only")
+        canvas.drawString(18 * mm, 5.5 * mm, f"© {app_now().year} {company_name}  |  Confidential – Internal Use Only")
         canvas.drawRightString(W - 18 * mm, 5.5 * mm, "Feed Management System")
         canvas.restoreState()
  
@@ -2244,7 +2239,7 @@ def export_overall_stock_report_pdf(
     MARGIN_BOT = 20 * mm
     AVAIL_W    = PAGE_W - 2 * MARGIN_H
  
-    generated_at = datetime.now().strftime("%d %B %Y, %H:%M")
+    generated_at = app_now().strftime("%d %B %Y, %H:%M")
     styles       = getSampleStyleSheet()
  
     # ── Normalise all sections up-front (needed for summary stats + decorator) ─
@@ -2319,7 +2314,7 @@ def export_overall_stock_report_pdf(
         canvas.setFillColor(GREY_MID)
         canvas.setFont("Helvetica", 7)
         canvas.drawString(18 * mm, 5.5 * mm,
-            f"© {datetime.now().year} {company_name}  |  Confidential – Internal Use Only")
+            f"© {app_now().year} {company_name}  |  Confidential – Internal Use Only")
         canvas.drawRightString(W - 18 * mm, 5.5 * mm, "Stock Management System")
  
         canvas.restoreState()
@@ -3141,8 +3136,7 @@ def export_batch_report_pdf(
         "p_after":     "#D4A017",
     }
  
-    IST_TZ      = timezone(timedelta(hours=5, minutes=30))
-    generated_at = datetime.now(IST_TZ).strftime("%d %B %Y, %H:%M")
+    generated_at = app_now_aware().strftime("%d %B %Y, %H:%M")
     company_name = getattr(batch, "company_name", "GURDEV FEEDS INDIA PVT LTD.")
     batch_start  = plc_start or getattr(batch, "hmi_started_at",   None)
     batch_end    = plc_end   or getattr(batch, "hmi_completed_at", None)
@@ -3163,8 +3157,7 @@ def export_batch_report_pdf(
         if value is None:
             return "-"
         if isinstance(value, datetime):
-            utc = value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
-            return utc.astimezone(IST_TZ).strftime("%d %b %Y")
+            return as_app_time(value).strftime("%d %b %Y")
         return str(value)
  
     # Handle fmt ts.
@@ -3173,8 +3166,7 @@ def export_batch_report_pdf(
         if value is None:
             return "-"
         if isinstance(value, datetime):
-            utc = value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
-            return utc.astimezone(IST_TZ).strftime("%d %b %Y %I:%M:%S %p IST")
+            return as_app_time(value).strftime("%d %b %Y %I:%M:%S %p IST")
         return str(value)
  
     # Handle panel.
@@ -3260,7 +3252,7 @@ def export_batch_report_pdf(
         canvas.setFillColor(GREY_MID)
         canvas.setFont("Helvetica", 7)
         canvas.drawString(18 * mm, 5.5 * mm,
-            f"© {datetime.now().year} {company_name}  |  Confidential – Internal Use Only")
+            f"© {app_now().year} {company_name}  |  Confidential – Internal Use Only")
         canvas.drawRightString(W - 18 * mm, 5.5 * mm, "Production Management System")
         canvas.restoreState()
  
@@ -3303,8 +3295,7 @@ def export_batch_report_pdf(
             for i, row in enumerate(rows):
                 ts = getattr(row, "recorded_at", None)
                 if isinstance(ts, datetime):
-                    utc = ts.replace(tzinfo=timezone.utc) if ts.tzinfo is None else ts.astimezone(timezone.utc)
-                    labels.append(utc.astimezone(IST_TZ).strftime("%H:%M:%S"))
+                    labels.append(as_app_time(ts).strftime("%H:%M:%S"))
                 elif ts not in (None, ""):
                     labels.append(str(ts))
                 else:

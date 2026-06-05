@@ -3,13 +3,14 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.plc import MachineState
 from app.models.production import ProductionBatch, ProductionBatchMaterial
+from app.utils.timezone import app_now
 from .stock import (
     add_feed_produced,
     collect_rm_shortages,
@@ -78,7 +79,7 @@ def try_post_batch_stock(db: Session, *, batch: ProductionBatch) -> bool:
         date=batch.date,
         weight_per_bag=batch.weight_per_bag)
     batch.stock_posted = True
-    batch.last_modified_at = datetime.utcnow()
+    batch.last_modified_at = app_now()
     # Session is configured with autoflush=False; force persistence so
     # subsequent ledger rebuild queries see stock_posted=True immediately.
     db.flush()
@@ -202,7 +203,7 @@ def sync_active_batch_progress(
     batch = db.get(ProductionBatch, machine_state.active_batch_id)
     if not batch:
         machine_state.active_batch_id = None
-        machine_state.updated_at = datetime.utcnow()
+        machine_state.updated_at = app_now()
         return None
 
     total_count = normalize_batch_count(batch.batch_size)
@@ -214,27 +215,27 @@ def sync_active_batch_progress(
     if duration <= 0:
         batch.hmi_status = RUN_STATUS_RUNNING
         if batch.hmi_started_at is None:
-            batch.hmi_started_at = datetime.utcnow()
-        batch.last_modified_at = datetime.utcnow()
+            batch.hmi_started_at = app_now()
+        batch.last_modified_at = app_now()
         return batch
 
     if total_count <= 0:
         batch.hmi_status = RUN_STATUS_RUNNING
         if batch.hmi_started_at is None:
-            batch.hmi_started_at = datetime.utcnow()
-        batch.last_modified_at = datetime.utcnow()
+            batch.hmi_started_at = app_now()
+        batch.last_modified_at = app_now()
         return batch
 
     if batch.hmi_started_at is None:
         completed = max(0, int(batch.hmi_completed_count or 0))
         if duration > 0 and completed > 0:
-            batch.hmi_started_at = datetime.utcnow() - timedelta(
+            batch.hmi_started_at = app_now() - timedelta(
                 seconds=(completed - 1) * duration
             )
         else:
-            batch.hmi_started_at = datetime.utcnow()
+            batch.hmi_started_at = app_now()
 
-    now = datetime.utcnow()
+    now = app_now()
     elapsed_seconds = max(0.0, (now - batch.hmi_started_at).total_seconds())
 
     if duration > 0:

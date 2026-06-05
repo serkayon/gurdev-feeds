@@ -1,7 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -17,6 +17,14 @@ class Settings(BaseSettings):
     # Override via DATABASE_URL in backend/app/.env if needed.
     database_url: str = "postgresql+psycopg://postgres@localhost:5432/poultry"
     db_schema: str = "poultry1"
+    timezone: str = Field(
+        default="Asia/Kolkata",
+        validation_alias=AliasChoices("APP_TIMEZONE", "TIMEZONE"),
+    )
+    n720_idle_timeout_minutes: float = Field(
+        default=10.0,
+        validation_alias=AliasChoices("N720_IDLE_TIMEOUT_MINUTES"),
+    )
 
     # Parse debug flag.
 

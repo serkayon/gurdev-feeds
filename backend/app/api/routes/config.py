@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from ..common import db_session, dt, error, json_body
 from app.models.config import ProductType, Recipe, RecipeMaterial
+from ...utils.timezone import app_now
 
 config_bp = Blueprint("config", __name__, url_prefix="/api/config")
 
@@ -100,7 +101,7 @@ def update_product_type(product_type_id: int):
             return error("Product type already exists")
 
         row.name = name
-        row.last_modified_at = datetime.utcnow()
+        row.last_modified_at = app_now()
         db.flush()
         return jsonify(_serialize_product_type(row))
 
@@ -315,7 +316,7 @@ def update_recipe(recipe_id: int):
         def _now() -> datetime:
             nonlocal now
             if now is None:
-                now = datetime.utcnow()
+                now = app_now()
             return now
 
         existing_materials = list(recipe.materials)

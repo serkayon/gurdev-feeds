@@ -15,6 +15,7 @@ import productionBg from "./assets/production.png";
 import batchwise from "./assets/batch-wise.png";
 import searchIcon from "./assets/icons8-search-60.png";
 import {
+  APP_TIME_ZONE,
   formatDateIST,
   formatDateTimeIST,
   toApiDateTimeFromDateInput,
@@ -258,7 +259,7 @@ export default function Production() {
   const currentMonthLabel = new Intl.DateTimeFormat("en-IN", {
     month: "long",
     year: "numeric",
-    timeZone: "Asia/Kolkata",
+    timeZone: APP_TIME_ZONE,
   }).format(new Date());
   const currentMonthProductionDisplay = currentMonthProductionMt.toLocaleString(
     "en-IN",

@@ -30,6 +30,8 @@ import {
   Activity,
 } from "lucide-react";
 import {
+  APP_TIME_ZONE,
+  APP_TIMEZONE_OFFSET,
   formatDateIST,
   formatTimeIST,
   parseApiDate,
@@ -68,13 +70,13 @@ export default function Dashboard() {
   };
 
   const toApiDateTimeFromDateInputIST = (dateInput, endOfDay = false) =>
-    `${dateInput}T${endOfDay ? "23:59:59" : "00:00:00"}+05:30`;
+    `${dateInput}T${endOfDay ? "23:59:59" : "00:00:00"}${APP_TIMEZONE_OFFSET}`;
 
   const formatTime24IST = (value, fallback = "") => {
     const parsed = parseApiDate(value);
     if (!parsed) return fallback;
     return new Intl.DateTimeFormat("en-IN", {
-      timeZone: "Asia/Kolkata",
+      timeZone: APP_TIME_ZONE,
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
@@ -328,10 +330,20 @@ const [showRecipePopup, setShowRecipePopup] = useState(false)
   const activeProgressLabel = activeBatch?.progress_label || "N/A";
   const activeCompletedCount = activeBatch?.completed_count ?? "N/A";
   const activeTotalCount = activeBatch?.planned_count ?? "N/A";
-  const latestHeartbeatAt = parseApiDate(machineStatus?.updated_at || plcData?.recorded_at);
+  const latestHeartbeatAt = parseApiDate(
+    machineStatus?.last_snapshot_at || plcData?.recorded_at || machineStatus?.updated_at
+  );
+  const idleTimeoutMinutes = Number(machineStatus?.idle_timeout_minutes || 10);
+  const idleTimeoutMs =
+    (Number.isFinite(idleTimeoutMinutes) && idleTimeoutMinutes > 0
+      ? idleTimeoutMinutes
+      : 10) *
+    60 *
+    1000;
   const isMachineOnline =
+    Boolean(machineStatus?.is_running) &&
     latestHeartbeatAt != null &&
-    dateTime.getTime() - latestHeartbeatAt.getTime() <= 5 * 60 * 1000;
+    dateTime.getTime() - latestHeartbeatAt.getTime() <= idleTimeoutMs;
   const isProcessRunning =
     typeof machineStatus?.is_running === "boolean"
       ? machineStatus.is_running

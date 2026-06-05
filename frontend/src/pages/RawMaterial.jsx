@@ -17,6 +17,8 @@ const MAIZE_EXTRA = ['fungus', 'broke', 'water_damage', 'small', 'dunkey', 'fm',
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 import {
+  APP_TIME_ZONE,
+  APP_TIMEZONE_OFFSET,
   formatDateTimeIST,
   parseApiDate,
   toDateInputIST,
@@ -24,7 +26,7 @@ import {
 } from "../utils/datetime";
 
 // Raw material entry, lab report, and stock management page.
-const IST_TIME_ZONE = "Asia/Kolkata"
+const IST_TIME_ZONE = APP_TIME_ZONE
 const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/
 const DEFAULT_TIME_PARTS = { hour: "12", minute: "00", meridiem: "AM" }
 
@@ -83,7 +85,7 @@ function toApiDateTimeFrom12HourInput(dateInput, hourInput, minuteInput, meridie
   let hour24 = hour12 % 12
   if (meridiem === "PM") hour24 += 12
 
-  return `${dateInput}T${pad2(hour24)}:${pad2(minute)}:00+05:30`
+  return `${dateInput}T${pad2(hour24)}:${pad2(minute)}:00${APP_TIMEZONE_OFFSET}`
 }
 
 const emptyEntryForm = () => {

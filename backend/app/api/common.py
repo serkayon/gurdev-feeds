@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta
 
 from dateutil.parser import isoparse
 from .fastapi_compat import jsonify, request
@@ -15,16 +15,17 @@ from app.models.production import ProductionBatch, ProductionBatchMaterial, Prod
 from app.models.raw_material import RawMaterialEntry
 from app.models.user import User
 from ..services.auth import create_access_token, decode_token
+from ..utils.timezone import APP_TIMEZONE, app_now_aware, to_db_time
 
-IST = timezone(timedelta(hours=5, minutes=30))
+IST = APP_TIMEZONE
 
 
-# Return a naive-or-aware datetime normalized to UTC.
+# Return a naive-or-aware datetime normalized to the configured app timezone.
 
-def _as_utc(value: datetime) -> datetime:
+def _as_app_time(value: datetime) -> datetime:
     if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc)
+        return value.replace(tzinfo=IST)
+    return value.astimezone(IST)
 
 
 # Yield a database session with automatic commit and rollback handling.
@@ -42,12 +43,12 @@ def db_session():
         db.close()
 
 
-# Serialize a datetime to an ISO-8601 UTC string.
+# Serialize a datetime to an ISO-8601 string in the configured app timezone.
 
 def dt(value: datetime | None) -> str | None:
     if value is None:
         return None
-    return _as_utc(value).isoformat().replace("+00:00", "Z")
+    return _as_app_time(value).isoformat()
 
 
 # Return a standard JSON error response.
@@ -56,7 +57,7 @@ def error(detail: str, status: int = 400):
     return jsonify({"detail": detail}), status
 
 
-# Parse an incoming datetime string into a naive UTC datetime.
+# Parse an incoming datetime string into a naive datetime in the configured app timezone.
 
 def parse_datetime(raw: str | None, field_name: str = "datetime") -> datetime | None:
     if raw in (None, ""):
@@ -64,7 +65,7 @@ def parse_datetime(raw: str | None, field_name: str = "datetime") -> datetime | 
     try:
         parsed = isoparse(raw)
         if parsed.tzinfo is not None:
-            return parsed.astimezone(timezone.utc).replace(tzinfo=None)
+            return to_db_time(parsed)
         return parsed
     except Exception as exc:
         raise ValueError(f"Invalid {field_name}: {raw}") from exc
@@ -88,7 +89,7 @@ def resolve_period_range(
             raise ValueError("from_date cannot be after to_date")
         return from_date, to_date
 
-    now_ist = datetime.now(timezone.utc).astimezone(IST)
+    now_ist = app_now_aware()
     today_ist = now_ist.date()
 
     if normalized in {"today"}:
@@ -117,8 +118,8 @@ def resolve_period_range(
 
     start_ist = datetime.combine(start_day, time(0, 0, 0), tzinfo=IST)
     end_ist = datetime.combine(end_day, time(23, 59, 59), tzinfo=IST)
-    from_date = start_ist.astimezone(timezone.utc).replace(tzinfo=None)
-    to_date = end_ist.astimezone(timezone.utc).replace(tzinfo=None)
+    from_date = start_ist.replace(tzinfo=None)
+    to_date = end_ist.replace(tzinfo=None)
     return from_date, to_date
 
 

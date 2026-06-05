@@ -1,28 +1,19 @@
 from __future__ import annotations
 
-from datetime import timedelta, timezone
 from math import isclose
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from reportlab.graphics.charts.linecharts import HorizontalLineChart
 from reportlab.graphics.shapes import Drawing, Line, String
 from reportlab.lib import colors
 from reportlab.lib.colors import HexColor
 
-try:
-    IST_TIMEZONE = ZoneInfo("Asia/Kolkata")
-except ZoneInfoNotFoundError:
-    IST_TIMEZONE = timezone(timedelta(hours=5, minutes=30), name="IST")
+from .timezone import as_app_time
 
 
 # Handle to ist.
 
 def _to_ist(value):
-    if value.tzinfo is None:
-        utc_value = value.replace(tzinfo=timezone.utc)
-    else:
-        utc_value = value.astimezone(timezone.utc)
-    return utc_value.astimezone(IST_TIMEZONE)
+    return as_app_time(value)
 
 
 # Handle series values.

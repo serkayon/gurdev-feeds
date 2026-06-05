@@ -38,6 +38,7 @@ from ...services.stock import (
     rebuild_feed_stock_ledger,
     rebuild_rm_stock_ledger,
     resolve_effective_batch_run_count)
+from ...utils.timezone import app_now
 from ...utils.export import (
     export_batch_consumption_report_excel,
     export_batch_consumption_report_pdf,
@@ -85,7 +86,7 @@ def _display_batch_no(batch: ProductionBatch) -> str:
 # Computes PLC time window boundaries corresponding to a batch run.
 
 def _resolve_batch_plc_window(batch: ProductionBatch) -> tuple[datetime, datetime]:
-    start = batch.hmi_started_at or batch.date or batch.created_at or datetime.utcnow()
+    start = batch.hmi_started_at or batch.date or batch.created_at or app_now()
     status = (batch.hmi_status or "").strip().lower()
 
     if batch.hmi_completed_at is not None:
@@ -93,7 +94,7 @@ def _resolve_batch_plc_window(batch: ProductionBatch) -> tuple[datetime, datetim
     elif status in (RUN_STATUS_COMPLETED, RUN_STATUS_STOPPED):
         end = batch.last_modified_at or start
     else:
-        end = datetime.utcnow()
+        end = app_now()
 
     if end < start:
         end = start
@@ -536,7 +537,7 @@ def mark_batch_complete(batch_id: int):
             batch.rm_shortage_detail = None
 
         if status != RUN_STATUS_COMPLETED:
-            now = datetime.utcnow()
+            now = app_now()
             planned_count = normalize_batch_count(batch.batch_size)
             completed_count = max(0, int(batch.hmi_completed_count or 0))
             if planned_count > 0:
@@ -873,7 +874,7 @@ def update_batch_details(batch_id: int):
                 rebuild_rm_stock_ledger(db=db)
 
             if batch_updated:
-                batch.last_modified_at = datetime.utcnow()
+                batch.last_modified_at = app_now()
 
             posted_now = try_post_batch_stock(db, batch=batch)
             if posted_now:
@@ -1174,13 +1175,27 @@ def download_single_batch(batch_id: int):
             db.execute(
                 select(PLCDataSnapshot)
                 .where(
-                    PLCDataSnapshot.recorded_at >= batch_start,
-                    PLCDataSnapshot.recorded_at <= batch_end)
+                    PLCDataSnapshot.batch_id == batch_id)
                 .order_by(PLCDataSnapshot.recorded_at.asc())
             )
             .scalars()
             .all()
         )
+        if plc_rows:
+            batch_start = plc_rows[0].recorded_at
+            batch_end = plc_rows[-1].recorded_at
+        else:
+            plc_rows = (
+                db.execute(
+                    select(PLCDataSnapshot)
+                    .where(
+                        PLCDataSnapshot.recorded_at >= batch_start,
+                        PLCDataSnapshot.recorded_at <= batch_end)
+                    .order_by(PLCDataSnapshot.recorded_at.asc())
+                )
+                .scalars()
+                .all()
+            )
 
         # ? ?? Dynamic Sampling using CEIL
         TARGET_ROWS = 500

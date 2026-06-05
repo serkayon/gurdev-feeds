@@ -3,7 +3,6 @@
 from ..fastapi_compat import Blueprint, Response, jsonify, request
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
-from datetime import datetime
 
 from ..common import (
         db_session,
@@ -19,6 +18,7 @@ from app.models.dispatch import DispatchEntry, DispatchProduct
 from app.models.stock import FeedStock
 from ...services.id_codes import assign_dispatch_code
 from ...services.stock import rebuild_feed_stock_ledger
+from ...utils.timezone import app_now
 from ...utils.export import (
     export_dispatch_entry_report_excel,
     export_dispatch_entry_report_pdf,
@@ -403,7 +403,7 @@ def update_dispatch_entry(dispatch_code: str):
             entry.pincode = pincode
             entry.vehicle_no = vehicle_no
             entry.price = price
-            entry.last_modified_at = datetime.utcnow()
+            entry.last_modified_at = app_now()
 
             # Update products in-place to preserve IDs whenever possible.
             existing_products = sorted(list(entry.products), key=lambda row: row.id)

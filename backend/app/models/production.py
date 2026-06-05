@@ -3,6 +3,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from datetime import datetime
 
 from ..db import Base
+from ..utils.timezone import app_now
 
 
 # Define ProductionBatch.
@@ -30,7 +31,7 @@ class ProductionBatch(Base):
     rm_reduced: Mapped[bool] = mapped_column(Boolean, default=False)
     rm_shortage_flag: Mapped[bool] = mapped_column(Boolean, default=False)
     rm_shortage_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=app_now)
     last_modified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     report: Mapped["ProductionReport | None"] = relationship(
@@ -53,7 +54,7 @@ class ProductionBatchMaterial(Base):
     rm_name: Mapped[str] = mapped_column(String(255))
     quantity: Mapped[float] = mapped_column(Float)
     total_quantity: Mapped[float | None] = mapped_column(Float, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=app_now)
 
     batch: Mapped["ProductionBatch"] = relationship(
         "ProductionBatch",
@@ -88,4 +89,4 @@ class ProductionReport(Base):
     pellet_diameter: Mapped[float | None] = mapped_column(Float, nullable=True)
     fines: Mapped[float | None] = mapped_column(Float, nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=app_now)

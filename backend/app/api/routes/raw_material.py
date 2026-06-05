@@ -1,7 +1,5 @@
 # Raw material type, entry, lab report, and export routes.
 
-from datetime import datetime
-
 from ..fastapi_compat import Blueprint, Response, jsonify, request
 from sqlalchemy import func, or_, select
 
@@ -21,6 +19,7 @@ from app.models.raw_material import RawMaterialEntry, RawMaterialLabReport, RawM
 from ...services.id_codes import assign_raw_material_entry_code
 from app.models.stock import RMStockLedger, RawMaterialStock
 from ...services.stock import rebuild_rm_stock_ledger
+from ...utils.timezone import app_now
 from ...utils.export import (
     export_raw_material_entry_report_excel,
     export_raw_material_entry_report_pdf,
@@ -184,7 +183,7 @@ def update_rm_type(type_id: int):
 
         old_name = row.name
         row.name = name
-        row.last_modified_at = datetime.utcnow()
+        row.last_modified_at = app_now()
 
         recipe_rows = (
             db.execute(select(RecipeMaterial).where(func.lower(RecipeMaterial.rm_name) == old_name.lower()))
@@ -449,7 +448,7 @@ def update_raw_material_entry(entry_code: str):
             entry.vehicle_no = vehicle_no
             entry.total_weight = total_weight
             entry.remarks = payload.get("remarks")
-            entry.last_modified_at = datetime.utcnow()
+            entry.last_modified_at = app_now()
             db.flush()
 
             rebuild_rm_stock_ledger(db=db)
@@ -510,7 +509,7 @@ def submit_raw_material_lab_report():
         report.colour = _normalize_quality_grade(payload.get("colour"))
         report.smell = _normalize_quality_grade(payload.get("smell"))
         if not is_new_report:
-            report.last_modified_at = datetime.utcnow()
+            report.last_modified_at = app_now()
         db.flush()
         return jsonify({"entry_code": _serialize_entry_code(entry), "saved": True})
 

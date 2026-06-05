@@ -9,6 +9,8 @@
   import chalk from "./assets/chalk.png"
   import searchIcon from "./assets/icons8-search-60.png"
   import {
+    APP_TIME_ZONE,
+    APP_TIMEZONE_OFFSET,
     formatDateTimeIST,
     parseApiDate,
     toDateInputIST,
@@ -17,7 +19,7 @@
 
   // Dispatch entry, product selection, and invoice/report page.
   const EMPTY_PRODUCT = { product_type: "", num_bags: "", weight_per_bag: "" }
-  const IST_TIME_ZONE = "Asia/Kolkata"
+  const IST_TIME_ZONE = APP_TIME_ZONE
   const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/
   const DEFAULT_TIME_PARTS = { hour: "12", minute: "00", meridiem: "AM" }
   const pad2 = (value) => String(value).padStart(2, "0")
@@ -32,7 +34,7 @@
 
   function toApiDateTimeFromDateInputIST(dateInput, endOfDay = false) {
     if (!DATE_ONLY_RE.test(String(dateInput || ""))) return null
-    return `${dateInput}T${endOfDay ? "23:59:59" : "00:00:00"}+05:30`
+    return `${dateInput}T${endOfDay ? "23:59:59" : "00:00:00"}${APP_TIMEZONE_OFFSET}`
   }
 
   function getTimePartsIST(value) {
@@ -70,7 +72,7 @@
 
     const hour = String(hour24).padStart(2, "0")
     const mins = String(minute).padStart(2, "0")
-    return `${dateInput}T${hour}:${mins}:00+05:30`
+    return `${dateInput}T${hour}:${mins}:00${APP_TIMEZONE_OFFSET}`
   }
 
   function emptyDispatchForm() {

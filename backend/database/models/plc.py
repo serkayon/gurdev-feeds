@@ -1,8 +1,9 @@
-from sqlalchemy import Boolean, DateTime, Float, Integer
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer
 from sqlalchemy.orm import Mapped, mapped_column
 from datetime import datetime
 
 from ..connection import Base
+from ..timezone import app_now
 
 
 # Real-time PLC data (Modbus) - written by cloud/Modbus team; we only read via API.
@@ -15,6 +16,7 @@ class PLCDataSnapshot(Base):
     running_status: Mapped[bool] = mapped_column(Boolean, default=False)
     process_status: Mapped[int] = mapped_column(Integer, default=0)
     process_product: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    batch_id: Mapped[int | None] = mapped_column(ForeignKey("production_batches.id"), nullable=True)
     ambient_temp: Mapped[float | None] = mapped_column(Float, nullable=True)
     humidity: Mapped[float | None] = mapped_column(Float, nullable=True)
     pressure_before: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -26,7 +28,7 @@ class PLCDataSnapshot(Base):
     pellet_feeder_speed: Mapped[float | None] = mapped_column(Float, nullable=True)
     pellet_motor_load: Mapped[float | None] = mapped_column(Float, nullable=True)
 
-    recorded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime, default=app_now)
 
 
 # Single-row machine state controlled by HMI.
@@ -40,6 +42,6 @@ class MachineState(Base):
     active_batch_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=app_now,
+        onupdate=app_now,
     )

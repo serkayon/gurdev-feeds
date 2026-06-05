@@ -63,6 +63,34 @@ def _ensure_existing_columns() -> None:
                 """
             )
         )
+        conn.execute(
+            text(
+                f"""
+                ALTER TABLE {DB_SCHEMA}.plc_data_snapshots
+                ADD COLUMN IF NOT EXISTS batch_id INTEGER
+                """
+            )
+        )
+        conn.execute(
+            text(
+                f"""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1
+                        FROM pg_constraint
+                        WHERE conname = 'fk_plc_data_snapshots_batch_id'
+                    ) THEN
+                        ALTER TABLE {DB_SCHEMA}.plc_data_snapshots
+                        ADD CONSTRAINT fk_plc_data_snapshots_batch_id
+                        FOREIGN KEY (batch_id)
+                        REFERENCES {DB_SCHEMA}.production_batches(id)
+                        ON DELETE SET NULL;
+                    END IF;
+                END $$;
+                """
+            )
+        )
 
 
 def _seed_defaults() -> None:

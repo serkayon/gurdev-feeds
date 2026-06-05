@@ -1,11 +1,12 @@
-const INDIA_TIME_ZONE = "Asia/Kolkata";
+export const APP_TIME_ZONE = import.meta.env.VITE_APP_TIMEZONE || "Asia/Kolkata";
+export const APP_TIMEZONE_OFFSET = import.meta.env.VITE_APP_TIMEZONE_OFFSET || "+05:30";
 const INDIA_LOCALE = "en-IN";
 const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const HAS_TZ_RE = /(Z|[+-]\d{2}:\d{2})$/i;
 
 function datePartsInIST(value) {
   const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: INDIA_TIME_ZONE,
+    timeZone: APP_TIME_ZONE,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -49,7 +50,7 @@ export function formatDateIST(value, fallback = "-") {
   const parsed = parseApiDate(value);
   if (!parsed) return fallback;
   return new Intl.DateTimeFormat(INDIA_LOCALE, {
-    timeZone: INDIA_TIME_ZONE,
+    timeZone: APP_TIME_ZONE,
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
@@ -60,7 +61,7 @@ export function formatTimeIST(value, fallback = "-") {
   const parsed = parseApiDate(value);
   if (!parsed) return fallback;
   return new Intl.DateTimeFormat(INDIA_LOCALE, {
-    timeZone: INDIA_TIME_ZONE,
+    timeZone: APP_TIME_ZONE,
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
@@ -72,7 +73,7 @@ export function formatDateTimeIST(value, fallback = "-") {
   const parsed = parseApiDate(value);
   if (!parsed) return fallback;
   return new Intl.DateTimeFormat(INDIA_LOCALE, {
-    timeZone: INDIA_TIME_ZONE,
+    timeZone: APP_TIME_ZONE,
     day: "2-digit",
     month: "2-digit",
     year: "numeric",

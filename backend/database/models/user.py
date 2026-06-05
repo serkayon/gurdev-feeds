@@ -7,6 +7,7 @@ import hashlib
 import os
 
 from ..connection import Base
+from ..timezone import app_now
 
 
 # Define UserRole.
@@ -47,5 +48,5 @@ class User(Base):
     logo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_by_id: Mapped[int | None] = mapped_column(nullable=True)  # vendor who created this customer
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=app_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=app_now, onupdate=app_now)

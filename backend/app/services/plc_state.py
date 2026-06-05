@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime
-
 from sqlalchemy.orm import Session
 
 from app.models.plc import MachineState
+from app.utils.timezone import app_now
 
 MACHINE_STATE_ID = 1
 
@@ -28,6 +27,6 @@ def set_machine_running(
 ) -> MachineState:
     machine_state = get_or_create_machine_state(db)
     machine_state.is_running = bool(running)
-    machine_state.updated_at = datetime.utcnow()
+    machine_state.updated_at = app_now()
     machine_state.active_batch_id = active_batch_id if running else None
     return machine_state

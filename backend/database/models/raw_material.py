@@ -3,6 +3,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from datetime import datetime
 
 from ..connection import Base
+from ..timezone import app_now
 
 
 # Define RawMaterialType.
@@ -12,7 +13,7 @@ class RawMaterialType(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(100), unique=True)  # MAIZE, SOYA, DORB, DDGS, MDOC, MGL etc.
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=app_now)
     last_modified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
@@ -30,7 +31,7 @@ class RawMaterialEntry(Base):
     vehicle_no: Mapped[str] = mapped_column(String(50))
     total_weight: Mapped[float] = mapped_column(Float)
     remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=app_now)
     last_modified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     lab_report: Mapped["RawMaterialLabReport | None"] = relationship(
@@ -70,5 +71,5 @@ class RawMaterialLabReport(Base):
     colour: Mapped[str | None] = mapped_column(String(50), nullable=True)
     smell: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=app_now)
     last_modified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

@@ -7,7 +7,7 @@ settings = get_settings()
 
 connect_args = {}
 if settings.database_url.startswith("postgresql"):
-    connect_args["options"] = f"-csearch_path={settings.db_schema}"
+    connect_args["options"] = f"-csearch_path={settings.db_schema} -ctimezone={settings.timezone}"
 
 engine = create_engine(
     settings.database_url,

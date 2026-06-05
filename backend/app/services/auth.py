@@ -5,13 +5,14 @@ import base64
 import hashlib
 import hmac
 import os
-from datetime import datetime, timedelta
+from datetime import timedelta
 from jose import JWTError, jwt
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from app.models.user import User
+from app.utils.timezone import app_now
 
 settings = get_settings()
 PBKDF2_ALGORITHM = "pbkdf2_sha256"
@@ -83,7 +84,7 @@ def is_password_hashed(stored_value: str) -> bool:
 
 def create_access_token(data: dict) -> str:
     to_encode = data.copy()
-    to_encode.update({"exp": datetime.utcnow() + timedelta(minutes=settings.access_token_expire_minutes)})
+    to_encode.update({"exp": app_now() + timedelta(minutes=settings.access_token_expire_minutes)})
     return jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
 
 
