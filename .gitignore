@@ -9,10 +9,7 @@ build/
 */build/
 
 # Environment files
-.env
-.env.*
-!.env.example
-!.env.sample
+
 
 # Python
 __pycache__/
